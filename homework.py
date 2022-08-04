@@ -38,6 +38,7 @@ logger.addHandler(handler)
 
 
 def send_message(bot, message):
+    """Отправка сообщения об изменении статуса."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, text=message)
         logger.info('Сообщение в чат отправлено')
@@ -46,6 +47,7 @@ def send_message(bot, message):
 
 
 def get_api_answer(current_timestamp):
+    """Запрос к эндпоинту API-сервиса."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
     try:
@@ -59,6 +61,7 @@ def get_api_answer(current_timestamp):
 
 
 def check_response(response):
+    """Проверка ответа API на корректность."""
     try:
         homeworks_list = response['homeworks']
     except KeyError as error:
@@ -77,6 +80,7 @@ def check_response(response):
 
 
 def parse_status(homework):
+    """Извлечение из информации о домашней работе статуса этой работы."""
     try:
         homework_name = homework.get('homework_name')
     except KeyError as error:
@@ -94,6 +98,7 @@ def parse_status(homework):
 
 
 def check_tokens():
+    """Проверка наличия токенов."""
     for token in ('PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID'):
         if globals()[token] is None:
             logger.error(
@@ -104,6 +109,7 @@ def check_tokens():
 
 
 def main():
+    """Основная логика работы бота."""
     if not check_tokens():
         logger.critical('Переменная окружения недоступна')
         raise exceptions.MissingRequiredTokenException()
