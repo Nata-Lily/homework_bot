@@ -39,13 +39,15 @@ UNKNOWN_STATUS_ERROR = 'Недокументированный статус до
 CHANGED_STATUS = 'Изменился статус проверки работы "{}". {}'
 RESPONSE_NOT_DICT = 'Ответ API не является словарем'
 HOMEWORKS_NOT_IN_RESPONSE = 'Ошибка доступа по ключу homeworks'
-HOMEWORKS_NOT_LIST = 'Под ключом `homeworks` домашки приходят не в виде списка'
+HOMEWORKS_NOT_LIST = 'Под ключом homeworks домашки приходят не в виде списка'
 TOKEN_NOT_FOUND = 'Отсутствует обязательная переменная окружения {}'
 ERROR_MESSAGE = 'Сбой в работе программы: {}'
-HOMEWORK_NAME_NOT_FOUND = 'Не найден ключ `homework_name`!'
+HOMEWORK_NAME_NOT_FOUND = 'Не найден ключ homework_name!'
+HOMEWORK_STATUS_NOT_FOUND = 'Не найден ключ status!'
 SEND_MESSAGE_ERROR = 'Ошибка при отправке сообщения: {}'
 TOKEN_ERROR = 'Переменная окружения недоступна!'
 EMPTY_LIST = 'Список пуст'
+NO_STATUS_CHANGES = 'Обновления статуса нет'
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(stream=None)
@@ -101,13 +103,14 @@ def check_response(response):
 
 def parse_status(homework):
     """Извлечение из информации о домашней работе статуса этой работы."""
-    homework_status = homework.get('status')
-    verdict = HOMEWORK_VERDICTS[homework_status]
+    homework_status = homework['status']
+    if 'homework_name' not in homework:
+        raise KeyError(HOMEWORK_NAME_NOT_FOUND)
     if homework_status not in HOMEWORK_VERDICTS:
-        raise ValueError(UNKNOWN_STATUS_ERROR.format(homework_status))
+        raise KeyError(HOMEWORK_STATUS_NOT_FOUND)
     return (CHANGED_STATUS.format(
         homework['homework_name'],
-        verdict.get(homework_status)))
+        HOMEWORK_VERDICTS.get(homework_status)))
 
 
 def check_tokens():
@@ -137,13 +140,13 @@ def main():
             homeworks = check_response(response)
             current_timestamp = response.get('current_date', current_timestamp)
             if len(homeworks) > 0:
-                hw_status = homeworks[0].get('status')
+                hw_status = homeworks[0].get('homework_status')
                 if hw_status != previous_status:
                     message = parse_status(homeworks[0])
                     send_message(bot, message)
                     previous_status = hw_status
                 else:
-                    logger.debug('Обновления статуса нет')
+                    logger.debug(NO_STATUS_CHANGES)
 
         except Exception as error:
             message = ERROR_MESSAGE.format(error)
