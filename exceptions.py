@@ -1,22 +1,10 @@
-class SendMessageFailure(Exception):
+class StatusCodeError(Exception):
     pass
 
 
-class APIResponseStatusCodeException(Exception):
+class ResponseError(Exception):
     pass
 
 
-class CheckResponseException(Exception):
-    pass
-
-
-class UnknownHWStatusException(Exception):
-    pass
-
-
-class MissingRequiredTokenException(Exception):
-    pass
-
-
-class IncorrectAPIResponseException(Exception):
+class TokenError(Exception):
     pass
