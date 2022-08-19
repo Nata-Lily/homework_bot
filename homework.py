@@ -6,6 +6,7 @@ from http import HTTPStatus
 import requests
 import telegram
 from dotenv import load_dotenv
+from requests.exceptions import RequestException
 
 import exceptions
 
@@ -35,14 +36,13 @@ RESPONSE_ERROR = ('Отказ от обслуживания: {error}, key {key}.
 STATUS_CODE_ERROR = ('Ошибка при запросе к API: '
                      'status_code: {status_code}, endpoint: {url}, '
                      'headers: {headers}, params: {params}')
-UNKNOWN_STATUS_ERROR = 'Недокументированный статус домашней работы: {}'
+UNKNOWN_STATUS_ERROR = 'Неизвестный статус: {}'
 CHANGED_STATUS = 'Изменился статус проверки работы "{}". {}'
-RESPONSE_NOT_DICT = 'Ответ API не является словарем'
+RESPONSE_NOT_DICT = 'Ответ API в формате {}'
 HOMEWORKS_NOT_IN_RESPONSE = 'Ошибка доступа по ключу homeworks'
-HOMEWORKS_NOT_LIST = 'Под ключом homeworks домашки приходят не в виде списка'
+HOMEWORKS_NOT_LIST = 'Под ключом homeworks домашки приходят в виде {}'
 TOKEN_NOT_FOUND = 'Отсутствует обязательная переменная окружения {}'
 ERROR_MESSAGE = 'Сбой в работе программы: {}'
-HOMEWORK_NAME_NOT_FOUND = 'Не найден ключ homework_name!'
 HOMEWORK_STATUS_NOT_FOUND = 'Не найден ключ status!'
 SEND_MESSAGE_ERROR = 'Ошибка при отправке сообщения: {}'
 TOKEN_ERROR = 'Переменная окружения недоступна!'
@@ -62,19 +62,24 @@ def send_message(bot, message):
 
 def get_api_answer(current_timestamp):
     """Запрос к эндпоинту API-сервиса."""
-    params = {'from_date': current_timestamp}
+    parameters = dict(
+        url=ENDPOINT,
+        headers=HEADERS,
+        params={'from_date': current_timestamp}
+        )
     try:
-        response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    except Exception as error:
+        response = requests.get(**parameters)
+    except RequestException as error:
         raise ConnectionError(
             API_ANSWER_ERROR.format(
-                error=error, url=ENDPOINT, headers=HEADERS
+                error=error, **parameters
             )
         )
+    status_code = response.status_code
     if response.status_code != HTTPStatus.OK:
         raise exceptions.StatusCodeError(
             STATUS_CODE_ERROR.format(
-                url=ENDPOINT, headers=HEADERS
+                status_code=status_code, **parameters
             )
         )
     response_json = response.json()
@@ -84,30 +89,28 @@ def get_api_answer(current_timestamp):
                 RESPONSE_ERROR.format(
                     error=response_json[key],
                     key=key,
-                    url=ENDPOINT,
-                    headers=HEADERS))
+                    **parameters
+                ))
     return response_json
 
 
 def check_response(response):
     """Проверка ответа API на корректность."""
-    if type(response) is not dict:
-        raise TypeError(RESPONSE_NOT_DICT)
+    if not isinstance(response, dict):
+        raise TypeError(RESPONSE_NOT_DICT.format(type(response)))
     if 'homeworks' not in response:
         raise KeyError(HOMEWORKS_NOT_IN_RESPONSE)
     homeworks = response['homeworks']
-    if type(homeworks) is not list:
-        raise TypeError(HOMEWORKS_NOT_LIST)
+    if not isinstance(homeworks, list):
+        raise TypeError(HOMEWORKS_NOT_LIST.format(type(homeworks)))
     return homeworks
 
 
 def parse_status(homework):
     """Извлечение из информации о домашней работе статуса этой работы."""
     homework_status = homework['status']
-    if 'homework_name' not in homework:
-        raise KeyError(HOMEWORK_NAME_NOT_FOUND)
     if homework_status not in HOMEWORK_VERDICTS:
-        raise KeyError(HOMEWORK_STATUS_NOT_FOUND)
+        raise KeyError(UNKNOWN_STATUS_ERROR.format(str(homework_status)))
     return (CHANGED_STATUS.format(
         homework['homework_name'],
         HOMEWORK_VERDICTS.get(homework_status)))
@@ -115,20 +118,20 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка наличия токенов."""
+    flag = True
     for token in TOKENS:
         if globals()[token] is None:
             logger.critical(
                 TOKEN_NOT_FOUND.format(token)
             )
-            return False
-    return True
+            flag = False
+    return flag
 
 
 def main():
     """Основная логика работы бота."""
     if not check_tokens():
-        raise NameError(TOKEN_ERROR)
-
+        raise ValueError(TOKEN_ERROR)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
     previous_status = None
@@ -138,12 +141,14 @@ def main():
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
-            current_timestamp = response.get('current_date', current_timestamp)
-            if len(homeworks) > 0:
+            if homeworks:
                 hw_status = homeworks[0].get('homework_status')
                 if hw_status != previous_status:
                     message = parse_status(homeworks[0])
                     send_message(bot, message)
+                    current_timestamp = response.get(
+                        'current_date', current_timestamp
+                    )
                     previous_status = hw_status
                 else:
                     logger.debug(NO_STATUS_CHANGES)
@@ -151,16 +156,19 @@ def main():
         except Exception as error:
             message = ERROR_MESSAGE.format(error)
             logger.error(message)
-            if previous_error != str(error):
-                send_message(bot, message)
-                previous_error = str(error)
-            time.sleep(RETRY_TIME)
+            if previous_error != message:
+                try:
+                    send_message(bot, message)
+                    previous_error = message
+                except Exception as error:
+                    logger.exception(SEND_MESSAGE_ERROR.format(error))
+        time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
     logging.basicConfig(
         level=logging.DEBUG,
         filename=__file__ + '.log',
-        format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
+        format='%(asctime)s, %(levelname)s, %(name)s, %(message)s'
     )
     main()
