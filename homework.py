@@ -66,7 +66,7 @@ def get_api_answer(current_timestamp):
         url=ENDPOINT,
         headers=HEADERS,
         params={'from_date': current_timestamp}
-        )
+    )
     try:
         response = requests.get(**parameters)
     except RequestException as error:
